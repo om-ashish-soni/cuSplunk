@@ -1,0 +1,134 @@
+version: "3.9"
+
+# cuSplunk single-node GPU development stack
+# Requires: NVIDIA Docker runtime, CUDA 12+, A10G or better
+
+services:
+
+  ingest:
+    build: ../../services/ingest
+    ports:
+      - "9997:9997"   # S2S (Universal Forwarder)
+      - "8088:8088"   # HEC
+      - "514:514/udp" # Syslog
+      - "514:514/tcp"
+      - "6514:6514"   # Syslog TLS
+    environment:
+      - STORE_GRPC_ADDR=store:50051
+    depends_on:
+      - store
+    restart: unless-stopped
+
+  store:
+    build: ../../services/store
+    volumes:
+      - cusplunk-warm:/nvme/cusplunk/warm
+    environment:
+      - WARM_TIER_PATH=/nvme/cusplunk/warm
+      - COLD_TIER_PROVIDER=local  # use local for dev
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  query:
+    build: ../../services/query
+    ports:
+      - "50053:50053"
+    environment:
+      - STORE_GRPC_ADDR=store:50051
+      - BRIDGE_GRPC_ADDR=bridge:50052
+      - REDIS_URL=redis://redis:6379
+      - CUDA_VISIBLE_DEVICES=0
+    depends_on:
+      - store
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  detect:
+    build: ../../services/detect
+    environment:
+      - TRITON_URL=triton:8001
+      - CUDA_VISIBLE_DEVICES=0
+    depends_on:
+      - triton
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  bridge:
+    build: ../../services/bridge
+    ports:
+      - "50052:50052"
+    environment:
+      - SPLUNK_URL=${SPLUNK_URL}
+      - SPLUNK_TOKEN=${SPLUNK_TOKEN}
+      - CUTOVER_DATE=${CUTOVER_DATE}
+    restart: unless-stopped
+
+  api:
+    build: ../../services/api
+    ports:
+      - "8089:8089"   # REST API (Splunk-compatible port)
+      - "9090:9090"   # Prometheus metrics
+    environment:
+      - QUERY_GRPC_ADDR=query:50053
+      - DETECT_GRPC_ADDR=detect:50054
+    depends_on:
+      - query
+    restart: unless-stopped
+
+  triton:
+    image: nvcr.io/nvidia/tritonserver:25.01-py3
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./triton-models:/models
+    command: tritonserver --model-repository=/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=cusplunk
+    restart: unless-stopped
+
+volumes:
+  cusplunk-warm:
