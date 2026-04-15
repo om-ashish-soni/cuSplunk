@@ -1,0 +1,537 @@
+# cuSplunk SPL corpus — 500 representative queries
+# Format: one query per line, blank lines and # comments ignored
+# Categories: search, stats, eval, rex, timechart, transaction, tstats, sort, dedup, join, lookup, table, etc.
+
+# ── BASIC SEARCH (1-50) ────────────────────────────────────────────────────────
+search index=main
+search index=security sourcetype=WinEventLog
+search index=firewall src_ip=10.0.0.1
+search index=main host=webserver01
+search index=web status=404
+search index=main source="/var/log/syslog"
+search index=main eventtype=failed_login
+search index=main error
+search index=main "failed password"
+search index=main NOT error
+search index=main (error OR warning)
+search index=main error AND host=prod
+search index=main status>=400
+search index=main bytes>1000000
+search index=main duration<=0.5
+search index=main src_ip!=192.168.1.1
+search index=main host=web* action=purchase
+search index=main sourcetype=access_combined status=200 uri="/api/*"
+search index=network protocol=TCP dest_port=443
+search index=main earliest=-15m latest=now
+search index=main earliest=-1h@h latest=@h
+search index=main earliest=-7d@d latest=@d
+search index=main earliest="01/01/2025:00:00:00" latest="01/02/2025:00:00:00"
+search index=main host IN (web01, web02, web03)
+search index=main action=failure user=*
+search index=main sourcetype=syslog severity=critical
+search index=main process_name=powershell.exe
+search index=windows EventCode=4625
+search index=windows EventCode=4624 LogonType=3
+search index=main "Access Denied" OR "Permission Denied"
+search index=main tag=attack
+search index=firewall action=blocked dest_port=22
+search index=main url="*login*" status=401
+search index=main bytes=0 status=200
+search index=network src_ip=10.* dest_ip!=10.*
+search index=main user!="" password!=""
+search index=main level=ERROR message="*timeout*"
+search index=main category=malware signature=*
+search index=main index_earliest=-30d index_latest=-1d
+search index=main (src_ip=192.168.0.0/16 OR src_ip=10.0.0.0/8)
+search index=main process_id>0 parent_process_id>0
+search index=main file_path="C:\\Windows\\System32\\*"
+search index=main CommandLine="*-enc*"
+search index=main registry_path="HKLM\\*"
+search index=main dns_query=* NOT dns_query="*.corp.local"
+search index=main http_method=POST content_type="application/json"
+search index=main vendor_action="allowed" app=ssl bytes_out>5000000
+search index=main failed_attempts>5 earliest=-1h
+search index=main sourcetype=pan:traffic action=deny
+search index=main sourcetype=cisco:asa action=teardown
+
+# ── STATS (51-120) ─────────────────────────────────────────────────────────────
+search index=main | stats count
+search index=main | stats count by host
+search index=main | stats count by host, sourcetype
+search index=main | stats sum(bytes) by host
+search index=main | stats avg(duration) by uri
+search index=main | stats max(bytes) by src_ip
+search index=main | stats min(response_time) by endpoint
+search index=main | stats count, sum(bytes), avg(bytes) by host
+search index=main | stats dc(src_ip) by dest_port
+search index=main | stats values(uri) by host
+search index=main | stats list(user) by host
+search index=main | stats first(action) by session_id
+search index=main | stats last(status) by user
+search index=main | stats range(bytes) by host
+search index=main | stats stdev(duration) by endpoint
+search index=main | stats median(bytes) by src_ip
+search index=main | stats perc95(response_time) by host
+search index=main | stats count as event_count by host
+search index=main | stats sum(bytes) as total_bytes by host
+search index=main | stats count by host | sort -count
+search index=main | stats count by host | where count>100
+search index=main error | stats count by host | sort -count | head 10
+search index=main | stats dc(user) as unique_users, count as events by host
+search index=main | stats count by date_hour, host
+search index=main | stats earliest(_time) as first_seen, latest(_time) as last_seen by src_ip
+search index=main | stats count by host | eval pct=round(count/1000*100,2)
+search index=firewall | stats sum(bytes_in) as in, sum(bytes_out) as out by src_ip
+search index=main | stats values(process_name) as processes by host | where mvcount(processes)>5
+search index=main | stats count by action | eventstats sum(count) as total | eval pct=count/total*100
+search index=main | stats count by src_ip | sort -count | head 20 | rename count as "Connection Count"
+search index=main | stats count(eval(status>=400)) as errors, count as total by host | eval error_rate=errors/total
+search index=main | stats max(_time) as last_event by host | eval age=now()-last_event | where age>3600
+search index=main | stats count by hour_of_day=strftime(_time,"%H")
+search index=main | stats sum(bytes) by src_ip | eval gb=round(sum/1073741824,2) | fields src_ip, gb
+search index=windows EventCode=4625 | stats count by user | sort -count | head 10
+search index=main sourcetype=access_combined | stats count by status | sort status
+search index=main | stats per_second(count) by host
+search index=main | stats rate(bytes) by interface
+search index=main | stats estdc(src_ip) as approx_unique_ips
+search index=main | stats count by host | stats avg(count) as avg_events_per_host
+search index=main | stats values(dest_port) as ports by src_ip | where mvcount(ports)>50
+search index=main | stats count by _time span=1h
+search index=main | streamstats count by host
+search index=main | streamstats sum(bytes) as running_bytes by session_id
+search index=main | eventstats count as total_count
+search index=main | eventstats avg(response_time) as avg_rt by host
+search index=main | eventstats sum(bytes) as session_total by session_id
+search index=main | streamstats window=10 avg(response_time) as rolling_avg by host
+search index=main | streamstats current=false count as prev_count by host
+search index=main | stats count by host | streamstats sum(count) as running_total
+search index=main | stats count by host | eventstats max(count) as global_max
+
+# ── EVAL (121-180) ─────────────────────────────────────────────────────────────
+search index=main | eval severity_num=if(severity="critical",4,if(severity="high",3,if(severity="medium",2,1)))
+search index=main | eval msg=upper(message)
+search index=main | eval short_host=substr(host,1,8)
+search index=main | eval gb=round(bytes/1073741824,2)
+search index=main | eval duration_ms=duration*1000
+search index=main | eval full_name=first_name." ".last_name
+search index=main | eval is_internal=if(cidrmatch("10.0.0.0/8",src_ip),"yes","no")
+search index=main | eval log_bytes=log(bytes,10)
+search index=main | eval sqrt_val=sqrt(bytes)
+search index=main | eval abs_diff=abs(actual-expected)
+search index=main | eval ts=strftime(_time,"%Y-%m-%d %H:%M:%S")
+search index=main | eval epoch=strptime(timestamp,"%d/%b/%Y:%H:%M:%S")
+search index=main | eval day_of_week=strftime(_time,"%A")
+search index=main | eval hour=strftime(_time,"%H")
+search index=main | eval age=now()-_time
+search index=main | eval parts=split(uri,"/")
+search index=main | eval domain=mvindex(split(host,"."),0)
+search index=main | eval path_parts=split(file_path,"\\")
+search index=main | eval hash=md5(user.host._time)
+search index=main | eval trimmed=trim(message)
+search index=main | eval lower_user=lower(user)
+search index=main | eval url_decoded=urldecode(uri)
+search index=main | eval replaced=replace(message,"error","ERROR")
+search index=main | eval has_error=if(match(message,"(?i)error"),"yes","no")
+search index=main | eval coalesced=coalesce(user,src_user,"unknown")
+search index=main | eval is_null_check=if(isnull(user),"no_user","has_user")
+search index=main | eval type_check=typeof(bytes)
+search index=main | eval len_msg=len(message)
+search index=main | eval padded=printf("%05d",count)
+search index=main | eval x=tonumber(bytes_str,10)
+search index=main | eval s=tostring(bytes,"commas")
+search index=main | eval risk=case(severity="critical",10,severity="high",7,severity="medium",4,true(),1)
+search index=main | eval combined=mvappend(field1,field2,field3)
+search index=main | eval mv_cnt=mvcount(tags)
+search index=main | eval unique_tags=mvdedup(tags)
+search index=main | eval found_idx=mvfind(tags,"malware")
+search index=main | eval first_tag=mvindex(tags,0)
+search index=main | eval joined=mvjoin(tags,",")
+search index=main | eval range_vals=mvrange(1,10,2)
+search index=main | eval sorted_tags=mvsort(tags)
+search index=main | eval zipped=mvzip(keys,values)
+search index=main | eval rt=relative_time(now(),"-1d@d")
+search index=main | eval validate_ip=if(cidrmatch("0.0.0.0/0",src_ip),"valid","invalid")
+search index=main | eval nulled=nullif(user,"")
+search index=main | eval cleaned=ltrim(rtrim(message))
+search index=main | eval len2=len(substr(message,1,100))
+search index=main | eval encoded=urldecode(replace(uri,"+","%20"))
+search index=main | eval sha=sha256(user.":".host)
+search index=main | eval sig=sha512(password_hash)
+search index=main | eval search_hit=searchmatch("error AND host=web*")
+search index=main | eval matched=match(src_ip,"^192\\.168\\.")
+search index=main | eval strcat_test=strcat("host=",host," action=",action)
+search index=main | eval bool_test=if(isbool(flag),"bool","not_bool")
+search index=main | eval int_test=if(isint(bytes),"int","not_int")
+search index=main | eval num_test=if(isnum(score),"num","not_num")
+search index=main | eval nan_test=if(isnan(value),"nan","not_nan")
+search index=main | eval str_test=if(isstr(user),"str","not_str")
+search index=main | eval not_null=isnotnull(user)
+search index=main | eval exact_val=exact(3.14159265358979)
+
+# ── REX (181-210) ─────────────────────────────────────────────────────────────
+search index=main | rex "(?P<method>GET|POST|PUT|DELETE) (?P<uri>/\S+)"
+search index=main | rex field=_raw "src_ip=(?P<src_ip>\d{1,3}(?:\.\d{1,3}){3})"
+search index=main | rex field=message "error_code=(?P<error_code>\d+)"
+search index=main | rex "user=(?P<user>\w+) action=(?P<action>\w+)"
+search index=main | rex max_match=5 "tag=(?P<tags>[^\s,]+)"
+search index=main | rex field=uri "^/api/v\d+/(?P<resource>[^/]+)"
+search index=main | rex "(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})"
+search index=main | rex field=command "powershell.*-[Ee]n[Cc][Oo][Dd][Ee][Dd][Cc][Oo][Mm][Mm][Aa][Nn][Dd]\s+(?P<encoded_cmd>\S+)"
+search index=main | rex "bytes_in=(?P<bytes_in>\d+) bytes_out=(?P<bytes_out>\d+)"
+search index=main | rex field=log_line "(?i)(?P<level>error|warn|info|debug)"
+search index=main | rex offset_field=start_pos "key=(?P<extracted_key>[^,]+)"
+search index=main | rex "host=(?P<src_host>[^ ]+) dest=(?P<dst_host>[^ ]+)"
+search index=main | rex field=email "(?P<user>[^@]+)@(?P<domain>.+)"
+search index=main | rex "(?P<process>[a-zA-Z0-9_\-]+\.exe)"
+search index=main | rex field=path "(?P<filename>[^\\\/]+)$"
+search index=main | rex max_match=0 "(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+search index=main | rex "(?P<proto>tcp|udp|icmp)\s+(?P<src>\S+)\s+(?P<dst>\S+)"
+search index=main | rex field=payload "(?P<cmd>[A-Z][A-Z0-9_]+)\s"
+search index=main | rex "status=(?P<http_status>[2-5]\d{2})"
+search index=main | rex "duration=(?P<duration_ms>\d+(?:\.\d+)?)"
+search index=main | rex field=uri "/(?P<version>v\d+)/"
+search index=main | rex "(?P<mac>[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})"
+search index=main | rex "(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+search index=main | rex "CVE-(?P<cve_year>\d{4})-(?P<cve_id>\d+)"
+search index=main | rex "(?P<key>\w+)=(?P<value>[^ ]+)" max_match=10
+search index=main | rex field=syslog "^(?P<month>\w{3})\s+(?P<day>\d+)\s+(?P<time>\d{2}:\d{2}:\d{2})\s+(?P<host>\S+)"
+search index=main | rex "(?P<base64>[A-Za-z0-9+/]{20,}={0,2})"
+search index=main | rex field=uri "(?P<path>[^?]+)(?:\?(?P<query>.+))?"
+search index=main | rex "FAILED (?P<reason>[^:]+): (?P<detail>.+)"
+search index=main | rex field=registry "\\(?P<reg_key>[^\\]+)$"
+
+# ── TIMECHART (211-230) ────────────────────────────────────────────────────────
+search index=main | timechart count
+search index=main | timechart span=1h count
+search index=main | timechart span=5m count by host
+search index=main | timechart span=1d sum(bytes) by host
+search index=firewall action=blocked | timechart span=1h count by dest_port limit=5
+search index=main error | timechart span=15m count
+search index=main | timechart span=1h avg(response_time) by endpoint
+search index=main | timechart span=1d dc(user) as unique_users
+search index=main | timechart span=30m count by sourcetype
+search index=main | timechart span=1h sum(bytes_in), sum(bytes_out)
+search index=main | timechart span=1h count usenull=false
+search index=main | timechart bins=50 count by host
+search index=main | timechart span=1h count | eval total=sum
+search index=main | timechart span=6h avg(cpu_pct) by host limit=10
+search index=main | timechart span=1h per_second(count)
+search index=main | timechart span=1d max(bytes) by host
+search index=main | timechart span=1h count by action useother=false
+search index=main | timechart span=1h stdev(response_time) by host
+search index=main | timechart span=1h median(bytes)
+search index=main | timechart span=1h dc(src_ip) as unique_sources by dest_port limit=3
+
+# ── TRANSACTION (231-250) ──────────────────────────────────────────────────────
+search index=main | transaction session_id
+search index=main | transaction session_id maxspan=30m
+search index=main | transaction session_id maxspan=1h maxpause=5m
+search index=main | transaction user host maxspan=1d
+search index=main | transaction src_ip maxevents=100
+search index=main | transaction session_id startswith="login" endswith="logout"
+search index=main | transaction session_id startswith=eval(action="start") endswith=eval(action="end")
+search index=main | transaction session_id mvlist=true
+search index=main | transaction session_id keeporphans=true
+search index=main | transaction host process_id maxspan=5m maxpause=30s
+search index=main | transaction src_ip maxspan=10m | stats avg(duration) by src_ip
+search index=main | transaction session_id | eval duration_min=duration/60
+search index=main | transaction user startswith="login" maxspan=8h | stats count by user
+search index=main | transaction src_ip dest_ip maxspan=1h | where eventcount>10
+search index=main | transaction session_id | table session_id, duration, eventcount
+search index=main | transaction process_guid maxspan=1m | where eventcount>=3
+search index=main | transaction src_ip maxspan=5m | eval burst=eventcount/duration
+search index=main | transaction user maxspan=24h | stats max(eventcount) by user
+search index=main | transaction host maxspan=5m startswith="error"
+search index=main | transaction session_id maxspan=30m | where duration>1800
+
+# ── TSTATS (251-265) ───────────────────────────────────────────────────────────
+search | tstats count from datamodel=Network_Traffic
+search | tstats count by host from datamodel=Network_Traffic
+search | tstats sum(Network_Traffic.bytes_in) as bytes from datamodel=Network_Traffic by Network_Traffic.src_ip
+search | tstats count by Network_Traffic.dest_port from datamodel=Network_Traffic
+search | tstats dc(Authentication.user) from datamodel=Authentication by host
+search | tstats count where host=webserver* from datamodel=Web.Web
+search | tstats summariesonly=true count by host from datamodel=Endpoint
+search | tstats count by _time span=1h from datamodel=Network_Traffic
+search | tstats max(Endpoint.cpu_load_percent) from datamodel=Endpoint by host
+search | tstats avg(Web.response_time) from datamodel=Web.Web by Web.uri
+search | tstats count where Authentication.action=failure from datamodel=Authentication by Authentication.user
+search | tstats earliest(_time) as first_seen by Network_Traffic.src_ip from datamodel=Network_Traffic
+search | tstats prestats=true count by host from datamodel=Endpoint | stats sum(count) by host
+search | tstats count from datamodel=Network_Traffic.Traffic where Traffic.action=blocked by Traffic.dest_port
+search | tstats allow_old_summaries=true count by host from datamodel=Web.Web
+
+# ── JOIN (266-280) ─────────────────────────────────────────────────────────────
+search index=main | join src_ip [search index=threat_intel | fields ip, threat_level | rename ip as src_ip]
+search index=main | join type=left user [search index=users | fields user, department]
+search index=main | join max=1 session_id [search index=sessions | fields session_id, country]
+search index=main | join type=outer host [search index=assets | fields host, owner, criticality]
+search index=firewall | join src_ip [search index=vuln_scan | fields ip, cvss_score | rename ip as src_ip] | where cvss_score>7
+search index=main | join user [search index=ad | fields user, groups | where match(groups,"admin")]
+search index=main | join src_ip dest_ip [search index=firewall action=blocked | stats count by src_ip, dest_ip]
+search index=main | join usetime=true earlier=true session_id [search index=sessions]
+search index=main | join type=left host [search index=inventory | fields host, os, patch_level]
+search index=main | join user [search index=hr | fields user, title, manager]
+search index=main | join overwrite=true src_ip [search index=geo | fields src_ip, country, city]
+search index=main | join type=inner src_ip [search index=watchlist | fields ip | rename ip as src_ip]
+search index=main | join max=5 user host [search index=sessions | fields user, host, session_id]
+search index=main | join type=left src_ip [search index=asn | fields ip, asn_org | rename ip as src_ip]
+search index=main | join process_guid [search index=sysmon EventCode=1 | fields process_guid, parent_process_guid, CommandLine]
+
+# ── LOOKUP (281-300) ───────────────────────────────────────────────────────────
+search index=main | lookup geo_lookup src_ip OUTPUT country, city, lat, lon
+search index=main | lookup user_lookup user OUTPUT department, manager, email
+search index=main | lookup threat_intel_lookup src_ip OUTPUT threat_score, category
+search index=main | lookup dns_lookup dest_ip as ip OUTPUT hostname
+search index=main | lookup port_lookup dest_port OUTPUT service_name, protocol
+search index=main | lookup severity_lookup error_code OUTPUT severity, description
+search index=main | lookup asset_lookup host OUTPUT criticality, owner, os
+search index=main | lookup mitre_lookup technique_id OUTPUT tactic, technique_name
+search index=main | lookup sigma_lookup rule_id OUTPUT rule_name, severity, mitre_id
+search index=main | lookup cve_lookup cve_id OUTPUTNEW cvss_score, description
+search index=main | inputlookup geo_lookup | stats count by country
+search index=main | inputlookup user_list.csv where department="Engineering"
+search index=main | inputlookup threat_feed.csv | eval match=if(cidrmatch(ip,src_ip),"yes","no") | where match="yes"
+search index=main | lookup user_lookup user | where isnull(department)
+search index=main | lookup geo_lookup src_ip | stats count by country | sort -count | head 20
+search index=main | lookup app_lookup app OUTPUT category, vendor | stats count by category
+search index=main | lookup asset_lookup host | eval risk=criticality*event_score | stats max(risk) by host
+search index=main | lookup hash_lookup file_hash OUTPUT malware_name, classification | where isnotnull(malware_name)
+search index=main | outputlookup host_summary.csv
+search index=main | stats count by user | outputlookup append=true user_activity.csv
+
+# ── TABLE / FIELDS / SORT / DEDUP / HEAD / TAIL (301-340) ─────────────────────
+search index=main | table _time, host, user, action, src_ip, dest_ip
+search index=main | table _time, host, message | sort -_time
+search index=main | fields host, user, action, bytes
+search index=main | fields - _raw, punct, linecount
+search index=main | fields + host, user, action
+search index=main | sort -_time | head 100
+search index=main | sort -bytes | head 20
+search index=main | sort host, -_time
+search index=main | sort -count | head 10 | table host, count
+search index=main | sort limit=1000 -_time
+search index=main | dedup host
+search index=main | dedup user, host
+search index=main | dedup 3 src_ip
+search index=main | dedup src_ip consecutive=true
+search index=main | dedup session_id keepevents=true
+search index=main | dedup src_ip keepempty=false
+search index=main | head 10
+search index=main | head 1000
+search index=main | tail 10
+search index=main | tail 5
+search index=main | head limit=100 null=false
+search index=main error | head 50 | table _time, host, message
+search index=main | stats count by host | sort -count | head 5 | table host, count
+search index=main | dedup host | stats count
+search index=main | sort num(bytes) | tail 10
+search index=main | sort str(host) | table host, user
+search index=main | sort ip(src_ip) | table src_ip, count
+search index=main | dedup session_id sortby -_time
+search index=main | sort -_time | dedup user | table _time, user, action
+search index=main | stats count by host | sort -count | head 10 | rename count as event_count
+search index=main | fields host, user | dedup host, user | stats count
+search index=main | table _time, host, user | dedup host | sort host
+search index=main | head 100 | stats count by host
+search index=main | sort -response_time | head 10 | table _time, host, uri, response_time
+search index=main | dedup 1 user | sort user | table user
+search index=main | sort -_time | table _time, host, action, src_ip | head 200
+search index=main | tail 100 | sort -_time | head 10
+search index=main | head 1000 | dedup session_id | stats count
+search index=main | sort -bytes | head 5 | eval gb=round(bytes/1073741824,3)
+search index=main | dedup host, sourcetype | stats count by sourcetype
+
+# ── RENAME (341-355) ───────────────────────────────────────────────────────────
+search index=main | rename src_ip as "Source IP"
+search index=main | rename user as username, host as hostname
+search index=main | stats count by host | rename count as "Event Count", host as "Host Name"
+search index=main | rename _time as timestamp | table timestamp, host, action
+search index=main | rename bytes as bytes_transferred | eval mb=round(bytes_transferred/1048576,2)
+search index=main | stats sum(bytes) as bytes by host | rename bytes as total_bytes
+search index=main | rename src_ip as attacker_ip, dest_ip as victim_ip
+search index=main | rename message as event_message | table _time, host, event_message
+search index=main | rename EventCode as event_id, ComputerName as host_name
+search index=main | stats count by action | rename action as event_action, count as event_count
+search index=main | rename file_path as "File Path", process_name as "Process Name"
+search index=main | rename url as request_url, status as http_status_code
+search index=main | stats max(bytes) as max_bytes by host | rename host as server_name
+search index=main | rename user as "User Account", src_ip as "Source Address"
+search index=main | rename dest_port as destination_port, dest_ip as destination_ip
+
+# ── BUCKET / BIN (356-370) ─────────────────────────────────────────────────────
+search index=main | bucket _time span=1h | stats count by _time
+search index=main | bin bytes span=1000000 | stats count by bytes
+search index=main | bucket duration span=0.1 | stats count by duration
+search index=main | bucket _time span=1d | stats count by _time, host
+search index=main | bucket response_time span=100 | stats count by response_time
+search index=main | bin _time span=30m | stats dc(user) by _time
+search index=main | bucket _time span=1w | stats sum(bytes) by _time
+search index=main | bucket bytes span=1mb | stats count by bytes
+search index=main | bin score span=10 | stats count by score
+search index=main | bucket _time span=6h | timechart span=6h count
+search index=main | bucket bytes bins=10 | stats count by bytes
+search index=main | bin _time span=1h aligntime=@d | stats count by _time
+search index=main | bucket duration start=0 end=10 span=1 | stats count by duration
+search index=main | bin _time span=15m | stats count by _time | sort -_time
+search index=main | bucket bytes span=100mb as bytes_bucket | stats count by bytes_bucket
+
+# ── APPEND / APPENDCOLS / UNION (371-385) ─────────────────────────────────────
+search index=main sourcetype=A | append [search index=main sourcetype=B]
+search index=main host=web* | append [search index=main host=app*]
+search index=prod | append [search index=dev]
+search index=main | appendcols [search index=lookup_data | fields host, extra_field]
+search index=main | stats count by host | appendcols [search index=main | stats avg(bytes) by host]
+search index=main | union [search index=archive] [search index=backup]
+search index=main | union max=10000 [search index=main earliest=-7d] [search index=archive]
+search index=main error | append [search index=main warning | eval severity="warning"]
+search index=main | append [makeresults count=1 | eval host="summary", count=0]
+search index=main | appendcols [stats count by host | rename count as total_events]
+search index=main | union [search index=siem1] [search index=siem2] [search index=siem3]
+search index=prod | append [search index=staging | eval env="staging"]
+search index=main | stats count by host | append [search index=main | stats sum(bytes) as count by host]
+search index=main | union [search index=main sourcetype=syslog] [search index=main sourcetype=winevent]
+search index=main | appendcols [| inputlookup reference_data.csv | fields host, baseline]
+
+# ── TOP / RARE (386-400) ───────────────────────────────────────────────────────
+search index=main | top user
+search index=main | top 5 host
+search index=main | top dest_port by src_ip
+search index=main | top 10 user by host
+search index=main | top uri showperc=false
+search index=main | top 20 src_ip countfield=hit_count percentfield=hit_pct
+search index=main | rare dest_port
+search index=main | rare 5 user
+search index=main | rare command by host
+search index=main | top limit=50 process_name useother=false
+search index=main | top 10 user | rename count as user_count
+search index=main | rare src_ip by dest_ip | where count=1
+search index=main | top file_hash by host | where count>3
+search index=main | rare command_line by host | lookup threat_intel_lookup command_line OUTPUT risk
+search index=main | top 5 user by host | where percent>10
+
+# ── FILLNULL / MAKERESULTS / EXTRACT (401-420) ────────────────────────────────
+search index=main | fillnull value="N/A"
+search index=main | fillnull value="0" bytes, duration
+search index=main | fillnull
+search index=main | makeresults count=100
+search | makeresults count=1 | eval host="test", message="test event"
+search | makeresults count=10 | eval idx=_n | eval host="host_".idx
+search index=main | extract
+search index=main | extract auto=false
+search index=main | extract clean_keys=true
+search index=main | extract maxchars=10000
+search index=main | fillnull value="unknown" user, host, src_ip
+search | makeresults | eval host="webserver", bytes=1024, action="login"
+search index=main | fillnull value="-1" response_time | where response_time>0
+search | makeresults count=5 | streamstats count as row_num
+search | makeresults count=24 | eval hour=_n-1 | eval ts=strftime(relative_time(now(),"@d+".hour."h"),"%H:%M")
+search index=main | kvform field=_raw
+search index=main | multikv
+search index=main | multikv fields host, user, action
+search index=main | extract kvdelim="=" pairdelim=" "
+search index=main | fillnull value="none" | where user!="none"
+
+# ── COMPLEX MULTI-STAGE (421-500) ──────────────────────────────────────────────
+search index=windows EventCode=4625 | stats count by user | where count>10 | sort -count | head 20 | lookup user_lookup user OUTPUT department | table user, department, count
+search index=firewall action=blocked | stats count by src_ip | sort -count | head 20 | lookup geo_lookup src_ip OUTPUT country | stats sum(count) by country | sort -sum(count)
+search index=main | transaction session_id maxspan=30m | stats avg(duration), avg(eventcount), dc(src_ip) as sources by user | where sources>1
+search index=main | rex field=message "error_code=(?P<error_code>\d+)" | stats count by error_code | sort -count | head 10 | lookup error_codes_lookup error_code OUTPUT description | table error_code, description, count
+search index=sysmon EventCode=1 | stats values(CommandLine) as cmds, dc(host) as hosts by user | where hosts>3 | eval suspicious=if(hosts>10,"high","medium") | table user, hosts, suspicious, cmds
+search index=main | eval hour=strftime(_time,"%H") | stats count by hour | eval is_peak=if(hour>=9 AND hour<=17,"business","off_hours") | stats sum(count) as events by is_peak
+search index=main | timechart span=1h count by host | where count>1000 | stats count as spike_hours by host | sort -spike_hours
+search index=main | join type=left src_ip [search index=threat_intel | stats max(risk_score) as risk by ip | rename ip as src_ip] | fillnull value=0 risk | where risk>70 | table _time, host, src_ip, risk
+search index=main process_name=powershell.exe | rex field=CommandLine "(?P<encoded>[A-Za-z0-9+/]{40,}={0,2})" | where isnotnull(encoded) | eval decoded_len=len(encoded) | stats count, max(decoded_len) by host | sort -count
+search index=main | bucket _time span=1h | stats count as hourly_events by _time, host | streamstats window=24 avg(hourly_events) as baseline by host | eval anomaly=if(hourly_events > baseline*3,"yes","no") | where anomaly="yes"
+search index=network | stats sum(bytes_out) as egress by src_ip | where egress>1073741824 | eval gb=round(egress/1073741824,2) | lookup asset_lookup host as src_ip OUTPUT owner | table src_ip, gb, owner | sort -gb
+search index=windows (EventCode=4624 OR EventCode=4625) | eval result=if(EventCode=4624,"success","failure") | stats count by result, user | eval ratio=if(result="failure",count,0) | stats sum(ratio) as failures, sum(if(result="success",count,0)) as successes by user | where failures>5
+search index=main | tstats count from datamodel=Network_Traffic by Network_Traffic.src_ip | sort -count | head 20 | rename Network_Traffic.src_ip as src_ip | lookup geo_lookup src_ip OUTPUT country
+search index=main | stats dc(dest_port) as port_count, values(dest_port) as ports by src_ip | where port_count>50 | eval is_scanner="yes" | table src_ip, port_count, is_scanner
+search index=main | timechart span=5m count | where count>500 | appendcols [search index=main | timechart span=5m avg(response_time) | rename avg(response_time) as avg_rt] | eval corr=if(count>500 AND avg_rt>2,"load_spike","normal")
+search index=sysmon | where EventCode IN (1,3,8,10,11) | stats count by EventCode, host | eventstats sum(count) as total by host | eval pct=round(count/total*100,1) | table host, EventCode, count, pct | sort host, -count
+search index=main | top 5 user by host | where percent>20 | lookup user_lookup user OUTPUT role | where role="standard" | eval risk="account_takeover" | table host, user, percent, role, risk
+search index=main | rex "(?P<key>\w+)=(?P<value>[^ ]+)" max_match=10 | stats count by key | sort -count | head 20 | rename count as frequency
+search index=main | transaction src_ip maxspan=1m maxevents=1000 | where eventcount>=100 | eval eps=eventcount/duration | sort -eps | head 20 | table src_ip, eps, eventcount, duration
+search index=main | stats earliest(_time) as first, latest(_time) as last by host | eval coverage=last-first | eval days=round(coverage/86400,1) | where days<7 | table host, days, first, last | sort days
+search index=main | eval domain=lower(if(match(uri,"^https?://([^/]+)"),rex(uri,"^https?://([^/]+)"),"")) | stats count by domain | sort -count | head 20
+search index=main | join type=left user [search index=auth | stats count as login_count by user] | fillnull value=0 login_count | eval risk=if(isnull(department) AND login_count>0,"orphan_account","ok") | where risk="orphan_account"
+search index=main | timechart span=1h count by host | rename count as events | appendcols [search index=main | timechart span=1h sum(bytes) by host] | eval bytes_per_event=if(events>0,sum(bytes)/events,0)
+search index=main | stats count by user, action | where action="privileged_exec" AND count>5 | sort -count | lookup user_lookup user OUTPUT clearance_level | where clearance_level!="high" | table user, count, clearance_level
+search index=main process_name=* | stats dc(process_name) as unique_procs, values(process_name) as proc_list by host | where unique_procs>100 | eval alert="process_explosion" | table host, unique_procs, alert
+search index=main | bucket _time span=1d | stats count by _time | eval day=strftime(_time,"%A") | stats avg(count) as avg_by_day by day | sort avg_by_day
+search index=main | dedup session_id | stats count as sessions, dc(user) as users, dc(src_ip) as sources | eval ratio=sessions/users | where ratio>10
+search index=main | rex field=user_agent "(?P<browser>Chrome|Firefox|Safari|Edge|IE)[/\s](?P<version>[\d.]+)" | stats count by browser, version | sort browser, -count
+search index=main | eval age_days=round((now()-_time)/86400) | bucket age_days span=7 | stats count by age_days | eval week="Week ".age_days | table week, count | sort age_days
+search index=main | tstats summariesonly=true count by host from datamodel=Endpoint where Endpoint.status=critical | join type=left host [search index=cmdb | fields host, team, tier] | stats sum(count) as alerts by team | sort -alerts | head 10
+search index=main | stats count by src_ip | where count>1000 | eval risk=case(count>10000,"critical",count>5000,"high",count>1000,"medium",true(),"low") | stats count by risk
+search index=main | rex field=CommandLine "(?i)(?P<technique>mimikatz|procdump|wce|fgdump|pwdump)" | stats count by technique, host | sort -count | eval alert="credential_access"
+search index=windows EventCode IN (4720,4722,4723,4724,4725,4726,4738,4740,4767) | stats count by EventCode, user, SubjectUserName | sort -count | eval action=case(EventCode=4720,"created",EventCode=4726,"deleted",EventCode=4740,"locked",true(),"modified")
+search index=main | stats sum(bytes) as total_bytes by dest_ip, dest_port | where dest_port NOT IN (80,443,8080,8443) AND total_bytes>104857600 | eval mb=round(total_bytes/1048576,1) | lookup geo_lookup dest_ip OUTPUT country | where country!="US" | sort -mb
+search index=main | transaction user maxspan=8h | where eventcount>=3 AND duration>0 | eval events_per_min=eventcount/(duration/60) | where events_per_min>10 | stats count as suspicious_sessions by user
+search index=main | eval is_worktime=if(strftime(_time,"%H")>=9 AND strftime(_time,"%H")<=17 AND strftime(_time,"%u")<=5,"yes","no") | stats count by is_worktime, host | eval label=is_worktime." hours" | chart count over host by label
+search index=main | rex field=uri "^(?P<endpoint>/[^?]+)" | stats count, avg(response_time), max(response_time) by endpoint | where avg(response_time)>1.0 | sort -avg(response_time) | head 20 | rename avg(response_time) as avg_rt, max(response_time) as max_rt
+search index=main | join src_ip [search index=vuln_scan | stats max(cvss_score) as max_cvss, values(cve_id) as cves by ip | rename ip as src_ip] | where max_cvss>9 | sort -max_cvss | table src_ip, max_cvss, cves | head 20
+search index=main | timechart span=1h dc(user) as unique_users | where unique_users>100 | streamstats window=7 avg(unique_users) as weekly_avg | eval spike=if(unique_users>weekly_avg*2,"yes","no") | where spike="yes"
+search index=main | stats count by host | eval tier=case(count>10000,"tier1",count>1000,"tier2",count>100,"tier3",true(),"tier4") | stats count by tier | sort tier
+search index=sysmon EventCode=3 | stats dc(dest_ip) as connections by src_host, process_name | where connections>100 | sort -connections | lookup threat_intel_lookup src_ip as src_host OUTPUT reputation | where reputation="malicious" OR isnull(reputation)
+search index=main | bucket _time span=1h | stats count by _time, host, action | where action="blocked" | eventstats sum(count) as total_blocked by _time | eval block_rate=count/total_blocked | where block_rate>0.5
+search index=main | eval week=strftime(_time,"%Y-W%V") | stats count by week, host | streamstats window=4 avg(count) as rolling4w by host | eval anomaly_score=abs(count-rolling4w)/rolling4w | where anomaly_score>0.5 | sort -anomaly_score
+search index=main file_path=* | rex field=file_path "(?P<ext>\.[a-zA-Z0-9]+)$" | stats count by ext, host | sort -count | where count>10 | lookup file_ext_lookup ext OUTPUT risk_level | where risk_level="high"
+search index=main | stats count by _time span=1m | sort _time | streamstats window=60 avg(count) as avg_1h, stdev(count) as stdev_1h | eval zscore=(count-avg_1h)/if(stdev_1h>0,stdev_1h,1) | where zscore>3 | table _time, count, avg_1h, zscore
+search index=main | eval has_internal_src=if(cidrmatch("10.0.0.0/8",src_ip) OR cidrmatch("172.16.0.0/12",src_ip) OR cidrmatch("192.168.0.0/16",src_ip),"internal","external") | eval has_internal_dst=if(cidrmatch("10.0.0.0/8",dest_ip) OR cidrmatch("172.16.0.0/12",dest_ip) OR cidrmatch("192.168.0.0/16",dest_ip),"internal","external") | stats count by has_internal_src, has_internal_dst
+search index=main | stats count by user, host | sort user, -count | streamstats count as rank by user | where rank<=3 | table user, host, count, rank
+
+# ── ADDITIONAL QUERIES (448-500) ──────────────────────────────────────────────
+search index=main | gpu_hint memory=8192 stream=true | stats count by host
+search index=main | gpu_hint | timechart span=1h count
+search index=main user=admin | fillnull value="none" | table _time, host, user
+search | makeresults count=100 | eval x=random()%100 | stats avg(x) as avg_x, stdev(x) as stdev_x
+search index=main | stats count by host | eval rank=1 | streamstats sum(count) as running by rank | eval cumulative_pct=round(running/last(running)*100,1)
+search index=main | rex field=uri "/(?P<version>v\d+)/" | rex field=uri "/(?P<resource>[a-z_]+)$" | stats count by version, resource | sort version, -count
+search index=main | eval category=case(status>=500,"server_error",status>=400,"client_error",status>=300,"redirect",status>=200,"success",true(),"unknown") | stats count by category
+search index=main | bucket _time span=1d | stats count, dc(user), dc(src_ip) by _time | eval threat_score=dc(src_ip)/dc(user) | sort -threat_score
+search index=main | eval weekday=strftime(_time,"%u") | eval is_weekend=if(weekday>5,"weekend","weekday") | stats count by is_weekend, host | chart count over host by is_weekend
+search index=main | stats values(action) as actions by session_id | eval has_login=if(mvfind(actions,"^login$")>=0,"yes","no") | where has_login="yes" | stats count
+search index=main | rare command_line by host | where count=1 | eval is_unique="unique_execution" | sort host
+search index=main | top 10 dest_ip by src_ip | stats count as top_dest_pairs by src_ip | where top_dest_pairs=10
+search index=main | stats sum(bytes_out) by dest_country | where dest_country!="US" | sort -sum(bytes_out) | head 10 | eval tb=round(sum(bytes_out)/1099511627776,4)
+search index=main | transaction src_ip dest_port maxspan=30s maxevents=1000 | where eventcount>500 | eval rps=eventcount/duration | sort -rps | head 20
+search index=main | eval local_time=strftime(relative_time(_time,"-8h"),"%Y-%m-%d %H:%M:%S") | table _time, local_time, host, action
+search index=main | stats count by host, action | stats values(action) as actions, sum(count) as total by host | eval num_actions=mvcount(actions) | where num_actions>5
+search index=main | join type=left src_ip [search index=main | stats max(_time) as last_seen by src_ip | eval stale=if(now()-last_seen>86400,"yes","no") | where stale="yes"] | fillnull value="active" stale | where stale="yes"
+search index=main | rex field=message "(?P<json>\{[^}]+\})" | eval parsed_json=spath(json,"error.code") | stats count by parsed_json | sort -count
+search index=main | eventstats count as total | eval pct=round(count/total*100,2) | sort -pct | head 10
+search index=main | stats perc50(response_time) as p50, perc95(response_time) as p95, perc99(response_time) as p99 by host | sort -p99
+search index=main | eval src_class=case(cidrmatch("10.0.0.0/8",src_ip),"RFC1918-10",cidrmatch("172.16.0.0/12",src_ip),"RFC1918-172",cidrmatch("192.168.0.0/16",src_ip),"RFC1918-192",true(),"public") | stats count by src_class
+search index=main | stats dc(user) as dau by date_mday | timechart span=1d avg(dau) as avg_daily_users
+search index=main | transaction session_id | eval long_session=if(duration>3600,"yes","no") | stats count by long_session, user | where long_session="yes"
+search index=main | bucket _time span=5m | stats count by _time | appendcols [search index=main | bucket _time span=5m | stats avg(response_time) by _time | rename avg(response_time) as avg_rt] | eval load_index=count*avg_rt
+search index=main | fields - _bkt, _cd, _indextime, _kv, _offset, _serial, _si, _sourcetype, _subsecond
+search index=main | eval hash_key=md5(src_ip."|".dest_ip."|".dest_port) | dedup hash_key | stats count
+search index=main | stats count by host | eval sla=if(count>1000,"breach","ok") | stats count by sla | rename count as host_count
+search index=main | timechart span=1h count | delta count as delta | where delta>1000 | table _time, count, delta
+search index=main | streamstats window=5 avg(response_time) as ma5, window=20 avg(response_time) as ma20 | eval signal=if(ma5>ma20,"bearish","bullish")
+search index=main | stats count by src_ip | where count>100 | eval score=log(count,10) | sort -score | head 20
+search index=main | eval safe_div=if(denominator!=0,numerator/denominator,null()) | where isnotnull(safe_div) | stats avg(safe_div) by category
+search index=main | rex field=user_agent "(?P<os>Windows NT \d+\.\d+|Mac OS X \d+[._]\d+|Linux)" | stats count by os | sort -count
+search index=main | stats earliest(_time) as first_seen, latest(_time) as last_seen, count by src_ip | eval lifespan_days=round((last_seen-first_seen)/86400,1) | where lifespan_days>30 | sort -count
+search index=main | eval normalized_uri=lower(replace(uri,"[0-9]+","N")) | stats count by normalized_uri | sort -count | head 20
+search index=main | stats count by host | join type=left host [search index=inventory | fields host, rack, datacenter] | fillnull value="unknown" rack, datacenter | table host, rack, datacenter, count
+search index=main | eval time_bucket=floor(_time/300)*300 | stats count by time_bucket | eval ts=strftime(time_bucket,"%H:%M") | table ts, count | sort ts
+search index=main | stats count(eval(action="allow")) as allowed, count(eval(action="block")) as blocked by dest_ip | eval block_rate=round(blocked/(allowed+blocked)*100,1) | where block_rate>80
+search index=main | rex field=message "failed (?P<fail_count>\d+) times" | eval fail_count=tonumber(fail_count) | stats sum(fail_count) as total_failures by user | sort -total_failures
+search index=main | eval domain_parts=split(fqdn,".") | eval tld=mvindex(domain_parts,-1) | stats count by tld | sort -count | head 10
+search index=main | stats dc(session_id) as sessions, dc(user) as users by host | eval sessions_per_user=round(sessions/users,1) | sort -sessions_per_user
+search index=main | eval byte_class=case(bytes<1024,"tiny",bytes<1048576,"small",bytes<1073741824,"medium",true(),"large") | stats count by byte_class | sort byte_class
+search index=main | rex field=syslog_msg "^(?P<facility>\d+)\.(?P<severity>\d+)" | eval facility_name=case(tonumber(facility)=0,"kern",tonumber(facility)=1,"user",tonumber(facility)=3,"daemon",true(),"other") | stats count by facility_name
+search index=main | stats count by host | eval host_hash=md5(host) | sort host_hash | table host, count, host_hash | head 20
+search index=main | timechart span=1h sum(bytes_in) as in_bytes, sum(bytes_out) as out_bytes | eval ratio=if(in_bytes>0,round(out_bytes/in_bytes,2),null()) | table _time, in_bytes, out_bytes, ratio
+search index=main | transaction user maxspan=5m | where eventcount>50 | eval velocity=eventcount/duration | join type=left user [search index=users | fields user, account_type] | where account_type="human" | sort -velocity
+search index=main | stats count by host | eventstats avg(count) as avg, stdev(count) as sd | eval z_score=(count-avg)/if(sd>0,sd,1) | where abs(z_score)>2 | sort -z_score
+search index=main | rename _time as event_time, host as server, src_ip as client_ip, action as event_action | fields event_time, server, client_ip, event_action | sort -event_time | head 500
+search index=main | stats values(process_name) as procs by host | eval proc_hash=md5(mvjoin(mvsort(procs),"|")) | stats count by proc_hash | sort -count | head 5
+search index=main | dedup host, action | stats count as combos by host | where combos>10 | lookup asset_lookup host OUTPUT tier | where tier="critical" | table host, combos, tier
+search index=main | stats count by src_ip, dest_ip, dest_port | where count>1000 | eval flow=src_ip."->".dest_ip.":".dest_port | top 10 flow
+search index=main | eval age_secs=now()-_time | where age_secs<3600 | stats count, avg(response_time) by host | eval sla_ok=if(avg(response_time)<0.5,"pass","fail") | table host, count, avg(response_time), sla_ok
+search index=main | rex field=_raw "(?P<kv_pair>[a-zA-Z_][a-zA-Z0-9_]+=\S+)" max_match=20 | stats values(kv_pair) as kv_pairs by host | eval kv_count=mvcount(kv_pairs) | where kv_count>10
+search index=main | stats count by host | where count>0 | sort -count | head 1 | eval top_host=host
