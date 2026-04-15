@@ -3,7 +3,7 @@
 **Owner:** P3  
 **Service:** `services/query/` (Python + cuDF), `libs/spl-parser/` (ANTLR4)  
 **Milestone:** M1  
-**Status:** Planning
+**Status:** R1 ✅ S3.1 (SPL parser 594 tests) — R2 S3.2/S3.3/S3.4 NOT STARTED
 
 ## Goal
 
@@ -11,7 +11,7 @@ Execute SPL queries 10–100× faster than Splunk. Full SPL compatibility — ex
 
 ## Stories
 
-### S3.1 — SPL Grammar (ANTLR4)
+### S3.1 — SPL Grammar (ANTLR4) ✅ (R1 — 594 tests passing, 500-query corpus)
 Implement complete SPL grammar covering 100% of common commands.
 - ANTLR4 grammar file: `libs/spl-parser/SPL.g4`
 - Commands: `search`, `stats`, `eval`, `rex`, `join`, `timechart`, `tstats`, `table`, `fields`, `where`, `dedup`, `sort`, `head`, `tail`, `rename`, `lookup`, `inputlookup`, `transaction`, `bucket`, `streamstats`, `eventstats`

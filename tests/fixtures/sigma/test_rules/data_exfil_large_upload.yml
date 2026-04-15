@@ -1,0 +1,33 @@
+title: Potential Data Exfiltration — Large Outbound Transfer
+id: a1b2c3d4-0005-4e5f-8a9b-000000000005
+status: test
+description: Detects unusually large outbound data transfers which may indicate data exfiltration.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1048/
+tags:
+  - attack.exfiltration
+  - attack.t1048
+logsource:
+  category: firewall
+detection:
+  selection:
+    action: allow
+    protocol:
+      - tcp
+      - udp
+  large_transfer:
+    bytes|gt: 50000000   # 50 MB in a single flow
+  condition: selection and large_transfer
+fields:
+  - src_ip
+  - dst_ip
+  - dst_port
+  - bytes
+  - protocol
+falsepositives:
+  - Backup jobs to cloud storage
+  - Software update servers
+  - Video streaming
+level: medium

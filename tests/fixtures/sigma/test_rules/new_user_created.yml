@@ -1,0 +1,26 @@
+title: New User Account Created
+id: a1b2c3d4-0006-4e5f-8a9b-000000000006
+status: test
+description: Detects creation of a new user account (EventID 4720) which may indicate persistence or unauthorized account creation.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventCode: 4720
+  condition: selection
+fields:
+  - AccountName
+  - AccountDomain
+  - ComputerName
+falsepositives:
+  - Legitimate IT provisioning
+  - HR onboarding automation
+level: low

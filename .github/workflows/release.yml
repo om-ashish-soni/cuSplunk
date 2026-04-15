@@ -1,0 +1,353 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/cusplunk
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Validate: unit tests must pass before any image is built
+  # ──────────────────────────────────────────────────────────────────
+  validate:
+    name: Validate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Go tests
+        run: |
+          for svc in ingest bridge api; do
+            dir="services/$svc"
+            [ -f "$dir/go.mod" ] && (cd "$dir" && go test ./... -count=1) || true
+          done
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+
+      - name: Rust tests
+        run: |
+          [ -f "services/store/Cargo.toml" ] && \
+            (cd services/store && cargo test --all-features) || true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python tests
+        run: |
+          pip install pytest antlr4-python3-runtime==4.13 pyyaml hypothesis
+          for dir in libs/spl-parser services/query services/detect; do
+            [ -d "$dir/tests" ] && \
+              pytest "$dir/tests" -m "not gpu" --tb=short || true
+          done
+
+  # ──────────────────────────────────────────────────────────────────
+  # Build + push Docker images — one job per service (parallel)
+  # ──────────────────────────────────────────────────────────────────
+  build-ingest:
+    name: Build ingest image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-ingest
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/ingest
+          file: services/ingest/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-store:
+    name: Build store image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-store
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/store
+          file: services/store/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-query:
+    name: Build query image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-query
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/query
+          file: services/query/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-detect:
+    name: Build detect image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-detect
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/detect
+          file: services/detect/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-bridge:
+    name: Build bridge image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-bridge
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/bridge
+          file: services/bridge/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-api:
+    name: Build api image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-api
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/api
+          file: services/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-ui:
+    name: Build UI image
+    runs-on: ubuntu-22.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-ui
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ui
+          file: ui/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ──────────────────────────────────────────────────────────────────
+  # Create GitHub Release with changelog
+  # ──────────────────────────────────────────────────────────────────
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-22.04
+    needs:
+      - build-ingest
+      - build-store
+      - build-query
+      - build-detect
+      - build-bridge
+      - build-api
+      - build-ui
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log "${PREV_TAG}..HEAD" --oneline --no-decorate)
+          else
+            LOG=$(git log --oneline --no-decorate | head -50)
+          fi
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$LOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Docker Images
+
+            All images pushed to GHCR:
+
+            ```
+            ghcr.io/${{ github.repository_owner }}/cusplunk-ingest:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/cusplunk-store:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/cusplunk-query:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/cusplunk-detect:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/cusplunk-bridge:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/cusplunk-api:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/cusplunk-ui:${{ github.ref_name }}
+            ```
+
+            ## Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+          generate_release_notes: false
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

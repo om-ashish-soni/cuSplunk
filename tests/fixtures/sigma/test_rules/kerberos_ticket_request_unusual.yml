@@ -1,0 +1,28 @@
+title: Unusual Kerberos Ticket Request
+id: a1b2c3d4-0008-4e5f-8a9b-000000000008
+status: test
+description: Detects Kerberos service ticket requests (EventID 4769) for unusual service names, potentially indicating lateral movement or Kerberoasting.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1558/003/
+tags:
+  - attack.credential_access
+  - attack.t1558.003
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventCode: 4769
+  filter_machine:
+    AccountName|endswith: "$"
+  condition: selection and not filter_machine
+fields:
+  - AccountName
+  - AccountDomain
+  - ComputerName
+falsepositives:
+  - Normal Kerberos activity for service accounts
+  - Monitoring tools
+level: medium

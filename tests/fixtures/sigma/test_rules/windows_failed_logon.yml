@@ -1,0 +1,28 @@
+title: Multiple Windows Failed Logon Attempts
+id: a1b2c3d4-0002-4e5f-8a9b-000000000002
+status: test
+description: Detects multiple failed logon attempts (EventID 4625) from the same account, indicating brute force or credential stuffing.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1110/
+tags:
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventCode: 4625
+  condition: selection | count() by AccountName > 10
+fields:
+  - AccountName
+  - AccountDomain
+  - src_ip
+  - LogonType
+  - ComputerName
+falsepositives:
+  - Users forgetting passwords
+  - Batch jobs with stale credentials
+level: high

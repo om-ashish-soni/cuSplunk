@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "cusplunk-spl-parser"
+version = "0.1.0"
+description = "SPL parser for cuSplunk — ANTLR4 grammar + typed Python AST"
+requires-python = ">=3.11"
+dependencies = [
+    "antlr4-python3-runtime==4.13.2",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cusplunk*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

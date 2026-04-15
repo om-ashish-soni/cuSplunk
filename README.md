@@ -72,6 +72,30 @@ curl -X POST http://localhost:8089/services/search/jobs \
   -d 'search=index=main | stats count by host'
 ```
 
+## Develop Without a GPU
+
+You don't need an NVIDIA GPU to build, test, or contribute to cuSplunk. ~80% of the codebase runs on CPU via built-in simulation and fallback modes.
+
+```bash
+# Start the CPU-only dev stack (no GPU required)
+docker-compose -f infra/docker/docker-compose.dev.yml up
+
+# Run all unit tests locally
+make test
+```
+
+| Layer | How it runs without a GPU |
+|---|---|
+| Query / SPL execution | `cudf.pandas` falls back to pandas automatically (`CUDF_PANDAS_FALLBACK_MODE=1`) |
+| CUDA kernels (Python) | Numba CUDA simulator runs kernels on CPU (`NUMBA_ENABLE_CUDASIM=1`) |
+| CUDA kernels (C++) | CPU reference implementations used in unit tests |
+| Detection (Morpheus/Triton) | Stub service in `docker-compose.dev.yml` |
+| Ingest / Store / Bridge / API | Go + Rust — no GPU dependency at all |
+
+The `docker-compose.dev.yml` sets all required env vars automatically. GPU hardware is only needed for integration tests, benchmarks, and production deployment.
+
+> See [TESTING.md](TESTING.md) for the full no-GPU testing strategy and [CONTRIBUTING.md](CONTRIBUTING.md) for the coding rules that make this work.
+
 ## Repo Structure
 
 ```

@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package store;
+
+option go_package = "github.com/om-ashish-soni/cusplunk/proto/storepb";
+
+// Store service — internal API consumed by ingest and query services.
+// All communication between services uses this interface.
+service Store {
+  // Write a batch of events from the ingest pipeline.
+  rpc Write(WriteRequest) returns (WriteResponse);
+
+  // Scan events matching a time range and optional filter.
+  // Returns a stream of Arrow IPC-serialized RecordBatches.
+  rpc Scan(ScanRequest) returns (stream ScanResponse);
+
+  // Delete all events for an index within a time range.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // List buckets for an index within a time range.
+  rpc BucketList(BucketListRequest) returns (BucketListResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Write
+// ---------------------------------------------------------------------------
+
+message Event {
+  int64  time_ns    = 1;  // Unix nanoseconds
+  bytes  raw        = 2;  // raw event bytes (optionally nvCOMP-compressed)
+  string host       = 3;
+  string source     = 4;
+  string sourcetype = 5;
+  string index      = 6;
+  // Additional extracted fields (populated by cuDF ingest pipeline).
+  map<string, string> fields = 7;
+}
+
+message WriteRequest {
+  string          index  = 1;
+  repeated Event  events = 2;
+}
+
+message WriteResponse {
+  uint64 events_written = 1;
+  string bucket_id      = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Scan
+// ---------------------------------------------------------------------------
+
+message ScanRequest {
+  string          index         = 1;
+  int64           start_time_ns = 2;  // inclusive
+  int64           end_time_ns   = 3;  // exclusive
+  repeated string columns       = 4;  // empty = all columns
+  string          filter_expr   = 5;  // optional SPL filter pushed down
+  uint64          limit         = 6;  // 0 = unlimited
+}
+
+// Each ScanResponse carries one Arrow IPC FileRecord batch.
+message ScanResponse {
+  bytes  arrow_ipc_batch = 1;  // Arrow IPC serialized RecordBatch
+  uint64 event_count     = 2;
+  string bucket_id       = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Delete
+// ---------------------------------------------------------------------------
+
+message DeleteRequest {
+  string index         = 1;
+  int64  start_time_ns = 2;
+  int64  end_time_ns   = 3;
+}
+
+message DeleteResponse {
+  uint64 buckets_deleted = 1;
+  uint64 events_deleted  = 2;
+}
+
+// ---------------------------------------------------------------------------
+// BucketList
+// ---------------------------------------------------------------------------
+
+message BucketListRequest {
+  string index         = 1;
+  int64  start_time_ns = 2;  // 0 = no lower bound
+  int64  end_time_ns   = 3;  // 0 = no upper bound
+}
+
+message BucketInfo {
+  string bucket_id      = 1;
+  string index          = 2;
+  int64  start_time_ns  = 3;
+  int64  end_time_ns    = 4;
+  uint64 event_count    = 5;
+  uint64 size_bytes     = 6;
+  string tier           = 7;  // "hot" | "warm" | "cold"
+  uint32 schema_version = 8;
+}
+
+message BucketListResponse {
+  repeated BucketInfo buckets = 1;
+}
