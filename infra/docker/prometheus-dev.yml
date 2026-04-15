@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: mock-ingest
+    static_configs:
+      - targets: ["mock-ingest:9090"]
+    metrics_path: /metrics
+
+  - job_name: mock-store
+    static_configs:
+      - targets: ["mock-store:8081"]
+    metrics_path: /metrics
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis:6379"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres:5432"]

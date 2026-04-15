@@ -1,0 +1,8 @@
+pyyaml>=6.0
+watchdog>=4.0
+grpcio>=1.64
+prometheus-client>=0.20
+# GPU path (install separately on GPU nodes):
+# cudf-cu12==24.10.*
+# rapids-morpheus
+# tritonclient[grpc]>=2.45

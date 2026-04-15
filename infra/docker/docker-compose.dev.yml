@@ -1,0 +1,117 @@
+version: "3.9"
+
+# cuSplunk CPU-only development stack
+# No GPU required — all GPU services replaced with mocks that return fixture data.
+# Run: make dev
+
+services:
+
+  # ── mock-ingest: accepts S2S/HEC/Syslog, writes events to /tmp/ingest.log ──
+  mock-ingest:
+    image: python:3.11-slim
+    ports:
+      - "9997:9997"   # S2S
+      - "8088:8088"   # HEC
+      - "514:5140/udp"  # Syslog (high port to avoid privilege requirement)
+    environment:
+      - OUTPUT_FILE=/tmp/ingest.log
+      - MOCK_STORE_URL=http://mock-store:8081
+      # GPU simulation env vars (C5 finding): allow cuDF/Numba code to run on CPU
+      - NUMBA_ENABLE_CUDASIM=1
+      - CUDF_PANDAS_FALLBACK_MODE=1
+    volumes:
+      - ./mock-services/mock_ingest.py:/app/mock_ingest.py:ro
+      - ingest-log:/tmp
+    command: python /app/mock_ingest.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/services/collector/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── mock-store: in-memory store that returns fixture data on scan ──
+  mock-store:
+    image: python:3.11-slim
+    ports:
+      - "50051:50051"   # gRPC (stub)
+      - "8081:8081"     # HTTP control/debug API
+    environment:
+      - FIXTURES_PATH=/fixtures
+      # GPU simulation env vars: allow cuDF/Numba code to import without GPU
+      - NUMBA_ENABLE_CUDASIM=1
+      - CUDF_PANDAS_FALLBACK_MODE=1
+    volumes:
+      - ./mock-services/mock_store.py:/app/mock_store.py:ro
+      - ../../tests/fixtures:/fixtures:ro
+    command: python /app/mock_store.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── PostgreSQL: metadata DB (users, saved searches, alerts, cases) ──
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: cusplunk
+      POSTGRES_USER: cusplunk
+      POSTGRES_PASSWORD: cusplunk_dev
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../../infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cusplunk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Redis: query result cache, session store ──
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Prometheus: metrics collection ──
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus-dev.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    restart: unless-stopped
+
+  # ── Grafana: dashboards ──
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=cusplunk
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  grafana-data:
+  ingest-log:

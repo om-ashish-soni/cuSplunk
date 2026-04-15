@@ -1,0 +1,309 @@
+{
+  "_meta": {
+    "description": "50 canonical SPL queries with expected output shapes. Results are stub/approximate for fixture data — exact counts update as real GPU executor is implemented (R2-C3).",
+    "fixture_seed": 42,
+    "generated_from": "tests/fixtures/events/firewall_100k.json + windows_event_log_1000.json"
+  },
+  "queries": [
+    {
+      "id": "q001",
+      "spl": "index=firewall | stats count",
+      "description": "Total event count",
+      "expected": {"type": "table", "columns": ["count"], "min_rows": 1}
+    },
+    {
+      "id": "q002",
+      "spl": "index=firewall | stats count by action",
+      "description": "Event count grouped by firewall action",
+      "expected": {"type": "table", "columns": ["action", "count"], "values": {"action": ["allow", "deny", "drop"]}}
+    },
+    {
+      "id": "q003",
+      "spl": "index=firewall action=deny | stats count by src_ip | sort -count | head 10",
+      "description": "Top 10 denied source IPs",
+      "expected": {"type": "table", "columns": ["src_ip", "count"], "max_rows": 10}
+    },
+    {
+      "id": "q004",
+      "spl": "index=firewall | stats count by dst_port | sort -count | head 20",
+      "description": "Top 20 destination ports",
+      "expected": {"type": "table", "columns": ["dst_port", "count"], "max_rows": 20}
+    },
+    {
+      "id": "q005",
+      "spl": "index=firewall | stats sum(bytes) as total_bytes by src_ip | sort -total_bytes | head 5",
+      "description": "Top 5 source IPs by bytes sent",
+      "expected": {"type": "table", "columns": ["src_ip", "total_bytes"], "max_rows": 5}
+    },
+    {
+      "id": "q006",
+      "spl": "index=firewall | timechart span=1h count by action",
+      "description": "Event count over time by action (1h buckets)",
+      "expected": {"type": "timechart", "columns": ["_time", "allow", "deny", "drop"]}
+    },
+    {
+      "id": "q007",
+      "spl": "index=firewall protocol=tcp action=allow | stats dc(dst_ip) as unique_dsts by src_ip | sort -unique_dsts | head 10",
+      "description": "Top 10 TCP sources by unique destination IPs (fan-out detection)",
+      "expected": {"type": "table", "columns": ["src_ip", "unique_dsts"], "max_rows": 10}
+    },
+    {
+      "id": "q008",
+      "spl": "index=firewall dst_port=22 action=deny | stats count by src_ip | where count > 5",
+      "description": "SSH brute-force candidates (>5 denials on port 22)",
+      "expected": {"type": "table", "columns": ["src_ip", "count"]}
+    },
+    {
+      "id": "q009",
+      "spl": "index=firewall | eval hour=strftime(_time, \"%H\") | stats count by hour | sort hour",
+      "description": "Event distribution by hour of day",
+      "expected": {"type": "table", "columns": ["hour", "count"], "row_count": 24}
+    },
+    {
+      "id": "q010",
+      "spl": "index=firewall | stats avg(bytes) as avg_bytes, max(bytes) as max_bytes, min(bytes) as min_bytes",
+      "description": "Byte size statistics",
+      "expected": {"type": "table", "columns": ["avg_bytes", "max_bytes", "min_bytes"], "row_count": 1}
+    },
+    {
+      "id": "q011",
+      "spl": "index=firewall | eval is_internal=if(match(src_ip, \"^10\\.\"), \"yes\", \"no\") | stats count by is_internal",
+      "description": "Internal vs external source classification",
+      "expected": {"type": "table", "columns": ["is_internal", "count"], "values": {"is_internal": ["yes", "no"]}}
+    },
+    {
+      "id": "q012",
+      "spl": "index=firewall action=deny dst_port IN (22, 23, 3389, 5900) | stats count by dst_port, src_ip | sort -count",
+      "description": "Remote access port denial summary",
+      "expected": {"type": "table", "columns": ["dst_port", "src_ip", "count"]}
+    },
+    {
+      "id": "q013",
+      "spl": "index=firewall | dedup src_ip | stats count",
+      "description": "Count of unique source IPs",
+      "expected": {"type": "table", "columns": ["count"], "row_count": 1}
+    },
+    {
+      "id": "q014",
+      "spl": "index=firewall | rex field=_raw \"src=(?P<parsed_src>[\\d.]+)\" | stats count by parsed_src | head 5",
+      "description": "Rex field extraction from raw text",
+      "expected": {"type": "table", "columns": ["parsed_src", "count"], "max_rows": 5}
+    },
+    {
+      "id": "q015",
+      "spl": "index=firewall | eval bytes_kb=round(bytes/1024, 2) | stats sum(bytes_kb) as total_kb",
+      "description": "Eval arithmetic and aggregation",
+      "expected": {"type": "table", "columns": ["total_kb"], "row_count": 1}
+    },
+    {
+      "id": "q016",
+      "spl": "index=firewall | table _time, src_ip, dst_ip, dst_port, action, bytes | head 100",
+      "description": "Table command — explicit column selection",
+      "expected": {"type": "table", "columns": ["_time", "src_ip", "dst_ip", "dst_port", "action", "bytes"], "max_rows": 100}
+    },
+    {
+      "id": "q017",
+      "spl": "index=firewall | fields src_ip, dst_ip, action | head 50",
+      "description": "Fields command — column projection",
+      "expected": {"type": "table", "columns": ["src_ip", "dst_ip", "action"], "max_rows": 50}
+    },
+    {
+      "id": "q018",
+      "spl": "index=firewall | rename src_ip AS source_ip, dst_ip AS destination_ip | head 10",
+      "description": "Rename command",
+      "expected": {"type": "table", "columns_include": ["source_ip", "destination_ip"], "max_rows": 10}
+    },
+    {
+      "id": "q019",
+      "spl": "index=firewall action=deny | sort _time | head 25",
+      "description": "Sort by time ascending",
+      "expected": {"type": "table", "max_rows": 25, "sorted_by": "_time", "ascending": true}
+    },
+    {
+      "id": "q020",
+      "spl": "index=firewall | stats count by host | sort -count",
+      "description": "Event count per firewall host",
+      "expected": {"type": "table", "columns": ["host", "count"]}
+    },
+    {
+      "id": "q021",
+      "spl": "index=windows | stats count by EventCode | sort -count",
+      "description": "Windows event ID distribution",
+      "expected": {"type": "table", "columns": ["EventCode", "count"]}
+    },
+    {
+      "id": "q022",
+      "spl": "index=windows EventCode=4625 | stats count by AccountName | sort -count | head 10",
+      "description": "Top failed login accounts (EventCode 4625)",
+      "expected": {"type": "table", "columns": ["AccountName", "count"], "max_rows": 10}
+    },
+    {
+      "id": "q023",
+      "spl": "index=windows EventCode=4624 LogonType=3 | stats count by src_ip | sort -count | head 10",
+      "description": "Top sources of network logons",
+      "expected": {"type": "table", "columns": ["src_ip", "count"], "max_rows": 10}
+    },
+    {
+      "id": "q024",
+      "spl": "index=windows EventCode=4688 | stats count by ComputerName | sort -count",
+      "description": "Process creation events per computer",
+      "expected": {"type": "table", "columns": ["ComputerName", "count"]}
+    },
+    {
+      "id": "q025",
+      "spl": "index=windows EventCode=4672 | stats dc(AccountName) as privileged_users",
+      "description": "Count of distinct accounts with special privileges",
+      "expected": {"type": "table", "columns": ["privileged_users"], "row_count": 1}
+    },
+    {
+      "id": "q026",
+      "spl": "index=windows | timechart span=30m count by EventCode",
+      "description": "Windows events over time by EventCode (30min buckets)",
+      "expected": {"type": "timechart", "columns_include": ["_time"]}
+    },
+    {
+      "id": "q027",
+      "spl": "index=windows EventCode=4625 | streamstats count as fail_count by AccountName | where fail_count > 3",
+      "description": "Streamstats — progressive failure count per account",
+      "expected": {"type": "table", "columns_include": ["AccountName", "fail_count"]}
+    },
+    {
+      "id": "q028",
+      "spl": "index=windows | eval logon_type_name=case(LogonType=\"2\", \"Interactive\", LogonType=\"3\", \"Network\", LogonType=\"10\", \"RemoteInteractive\", true(), \"Other\") | stats count by logon_type_name",
+      "description": "Eval case() expression",
+      "expected": {"type": "table", "columns": ["logon_type_name", "count"]}
+    },
+    {
+      "id": "q029",
+      "spl": "index=windows | eval ts_human=strftime(_time, \"%Y-%m-%d %H:%M:%S\") | table ts_human, EventCode, AccountName | head 20",
+      "description": "Eval strftime time formatting",
+      "expected": {"type": "table", "columns": ["ts_human", "EventCode", "AccountName"], "max_rows": 20}
+    },
+    {
+      "id": "q030",
+      "spl": "index=windows | where EventCode IN (4624, 4625, 4634) | stats count by EventCode",
+      "description": "Where with IN operator",
+      "expected": {"type": "table", "columns": ["EventCode", "count"], "values": {"EventCode": ["4624", "4625", "4634"]}}
+    },
+    {
+      "id": "q031",
+      "spl": "index=windows EventCode=4624 | stats count by AccountName, AccountDomain | sort -count | head 15",
+      "description": "Multi-field groupby",
+      "expected": {"type": "table", "columns": ["AccountName", "AccountDomain", "count"], "max_rows": 15}
+    },
+    {
+      "id": "q032",
+      "spl": "index=firewall | stats count by protocol | sort -count",
+      "description": "Protocol distribution",
+      "expected": {"type": "table", "columns": ["protocol", "count"]}
+    },
+    {
+      "id": "q033",
+      "spl": "index=firewall | eval port_class=if(dst_port<1024, \"privileged\", \"ephemeral\") | stats count by port_class",
+      "description": "Privileged vs ephemeral port classification",
+      "expected": {"type": "table", "columns": ["port_class", "count"], "values": {"port_class": ["privileged", "ephemeral"]}}
+    },
+    {
+      "id": "q034",
+      "spl": "index=firewall bytes>10000 | stats sum(bytes) as heavy_bytes, count by src_ip | sort -heavy_bytes | head 10",
+      "description": "High-bandwidth sources (>10KB per event)",
+      "expected": {"type": "table", "columns": ["src_ip", "heavy_bytes", "count"], "max_rows": 10}
+    },
+    {
+      "id": "q035",
+      "spl": "index=firewall | stats count by src_ip, dst_ip | where count > 50 | sort -count",
+      "description": "High-frequency src→dst pairs",
+      "expected": {"type": "table", "columns": ["src_ip", "dst_ip", "count"]}
+    },
+    {
+      "id": "q036",
+      "spl": "index=firewall | eventstats avg(bytes) as global_avg | eval anomaly=if(bytes > global_avg*3, \"high\", \"normal\") | stats count by anomaly",
+      "description": "Eventstats global aggregation + anomaly flag",
+      "expected": {"type": "table", "columns": ["anomaly", "count"], "values": {"anomaly": ["high", "normal"]}}
+    },
+    {
+      "id": "q037",
+      "spl": "index=firewall | tail 100",
+      "description": "Tail command — last N events",
+      "expected": {"type": "table", "row_count": 100}
+    },
+    {
+      "id": "q038",
+      "spl": "index=firewall action=deny | dedup src_ip sortby -_time | table src_ip, dst_ip, dst_port | head 20",
+      "description": "Dedup keeping most recent event per src_ip",
+      "expected": {"type": "table", "columns": ["src_ip", "dst_ip", "dst_port"], "max_rows": 20}
+    },
+    {
+      "id": "q039",
+      "spl": "index=firewall | tstats count where index=firewall by action",
+      "description": "tstats — direct columnar scan without raw decompression",
+      "expected": {"type": "table", "columns": ["action", "count"]}
+    },
+    {
+      "id": "q040",
+      "spl": "index=firewall | stats count by policy | sort -count",
+      "description": "Firewall policy hit counts",
+      "expected": {"type": "table", "columns": ["policy", "count"]}
+    },
+    {
+      "id": "q041",
+      "spl": "index=firewall | bucket _time span=1d | stats sum(bytes) as daily_bytes by _time | sort _time",
+      "description": "Bucket command — daily byte totals",
+      "expected": {"type": "table", "columns": ["_time", "daily_bytes"], "sorted_by": "_time", "ascending": true}
+    },
+    {
+      "id": "q042",
+      "spl": "index=windows | stats values(EventCode) as event_codes by ComputerName | sort ComputerName",
+      "description": "Values aggregation function — collect all event codes per host",
+      "expected": {"type": "table", "columns": ["ComputerName", "event_codes"]}
+    },
+    {
+      "id": "q043",
+      "spl": "index=windows | stats first(_time) as first_seen, last(_time) as last_seen by AccountName",
+      "description": "First/last time seen per account",
+      "expected": {"type": "table", "columns": ["AccountName", "first_seen", "last_seen"]}
+    },
+    {
+      "id": "q044",
+      "spl": "index=firewall | eval dst_port=tonumber(dst_port) | where dst_port < 1024 AND action=\"deny\" | stats count by dst_port | sort dst_port",
+      "description": "Tonumber eval + numeric where filter",
+      "expected": {"type": "table", "columns": ["dst_port", "count"]}
+    },
+    {
+      "id": "q045",
+      "spl": "index=firewall | stats count by src_ip | appendcols [search index=windows | stats count by src_ip]",
+      "description": "Appendcols — parallel subsearch result merge",
+      "expected": {"type": "table", "columns_include": ["src_ip", "count"]}
+    },
+    {
+      "id": "q046",
+      "spl": "index=firewall | stats count by dst_port | sort dst_port | where count > 100",
+      "description": "High-traffic ports (>100 events)",
+      "expected": {"type": "table", "columns": ["dst_port", "count"]}
+    },
+    {
+      "id": "q047",
+      "spl": "index=windows | rex field=_raw \"AccountName=(?P<acct>\\S+)\" | stats count by acct | sort -count | head 10",
+      "description": "Rex extraction from Windows raw log",
+      "expected": {"type": "table", "columns": ["acct", "count"], "max_rows": 10}
+    },
+    {
+      "id": "q048",
+      "spl": "index=firewall earliest=-1h | stats count",
+      "description": "Relative time filter (last 1 hour)",
+      "expected": {"type": "table", "columns": ["count"], "row_count": 1}
+    },
+    {
+      "id": "q049",
+      "spl": "index=firewall | stats count by action, protocol | sort action, -count",
+      "description": "Multi-field sort with mixed direction",
+      "expected": {"type": "table", "columns": ["action", "protocol", "count"]}
+    },
+    {
+      "id": "q050",
+      "spl": "index=windows EventCode=4625 | stats count as failures by AccountName | join type=left AccountName [search index=windows EventCode=4624 | stats count as successes by AccountName] | eval success_rate=round(successes/(successes+failures)*100, 1) | sort -failures | head 20",
+      "description": "Join — correlate login failures and successes per account",
+      "expected": {"type": "table", "columns_include": ["AccountName", "failures", "successes", "success_rate"], "max_rows": 20}
+    }
+  ]
+}

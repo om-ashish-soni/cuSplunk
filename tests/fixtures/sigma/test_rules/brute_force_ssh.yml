@@ -1,0 +1,29 @@
+title: SSH Brute Force Attempt
+id: a1b2c3d4-0001-4e5f-8a9b-000000000001
+status: test
+description: Detects multiple SSH connection failures from the same source IP within a short window.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1110/001/
+tags:
+  - attack.credential_access
+  - attack.t1110.001
+logsource:
+  category: firewall
+  product: paloalto
+detection:
+  selection:
+    action: deny
+    dst_port: 22
+    protocol: tcp
+  condition: selection | count() by src_ip > 5
+fields:
+  - src_ip
+  - dst_ip
+  - dst_port
+  - action
+falsepositives:
+  - Misconfigured automation
+  - Network scanners
+level: medium

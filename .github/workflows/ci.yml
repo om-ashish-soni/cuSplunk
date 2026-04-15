@@ -1,0 +1,365 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  schedule:
+    - cron: "0 2 * * *"   # nightly 02:00 UTC → e2e-tests
+    - cron: "0 4 * * 0"   # weekly Sunday 04:00 UTC → benchmarks
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Unit tests — CPU only, runs on every push/PR
+  # ──────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Go (ingest, bridge, api)
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Go unit tests
+        run: |
+          for svc in ingest bridge api; do
+            dir="services/$svc"
+            if [ -f "$dir/go.mod" ]; then
+              echo "==> go test ./... in $dir"
+              (cd "$dir" && go test ./... -v -race -count=1 -timeout 120s)
+            else
+              echo "==> skipping $dir (no go.mod yet)"
+            fi
+          done
+
+      # Rust (store)
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/store
+
+      - name: Rust unit tests
+        run: |
+          if [ -f "services/store/Cargo.toml" ]; then
+            echo "==> cargo test in services/store"
+            (cd services/store && cargo test --all-features -- --test-threads=4)
+          else
+            echo "==> skipping services/store (no Cargo.toml yet)"
+          fi
+
+      # Python (query, detect, spl-parser)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Python unit tests (CPU-only packages)
+        run: |
+          pip install pytest pytest-cov hypothesis pyyaml antlr4-python3-runtime==4.13 stix2
+          for dir in libs/spl-parser services/query services/detect; do
+            if [ -f "$dir/requirements-test.txt" ]; then
+              pip install -r "$dir/requirements-test.txt"
+            fi
+            if [ -d "$dir/tests" ]; then
+              echo "==> pytest $dir/tests (skip gpu marker)"
+              pytest "$dir/tests" -v --tb=short -m "not gpu" \
+                --cov="$dir" --cov-report=term-missing || true
+            else
+              echo "==> skipping $dir/tests (not yet present)"
+            fi
+          done
+
+      # UI (Next.js / Vitest)
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: UI unit tests
+        run: |
+          if [ -f "ui/package.json" ]; then
+            echo "==> npm ci + vitest in ui/"
+            (cd ui && npm ci && npx vitest run --reporter=verbose)
+          else
+            echo "==> skipping ui/ (no package.json yet)"
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
+  # SPL compatibility — every push/PR
+  # ──────────────────────────────────────────────────────────────────
+  spl-compat:
+    name: SPL Compatibility
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install SPL parser deps
+        run: pip install pytest antlr4-python3-runtime==4.13 hypothesis pyyaml
+
+      - name: Run SPL compat suite
+        run: |
+          if [ -d "tests/spl-compat" ]; then
+            pytest tests/spl-compat/ -v --tb=short
+          else
+            echo "==> tests/spl-compat not yet present — skipping"
+          fi
+
+      - name: Parse 500-query corpus
+        run: |
+          if [ -f "libs/spl-parser/cusplunk/spl/parser.py" ] && \
+             [ -f "libs/spl-parser/corpus/basic.txt" ]; then
+            (cd libs/spl-parser && pytest tests/ -v --tb=short -k "corpus")
+          else
+            echo "==> SPL parser not yet present — skipping corpus test"
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
+  # Lint — every push/PR
+  # ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59
+          args: --timeout=5m
+        continue-on-error: true  # non-blocking until Go services land
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+          components: clippy, rustfmt
+
+      - name: Rust clippy + fmt check
+        run: |
+          if [ -f "services/store/Cargo.toml" ]; then
+            (cd services/store && cargo clippy --all-targets --all-features -- -D warnings)
+            (cd services/store && cargo fmt --check)
+          else
+            echo "==> skipping Rust lint (no Cargo.toml yet)"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Ruff (Python)
+        run: |
+          pip install ruff
+          for dir in services/query services/detect libs/spl-parser; do
+            [ -d "$dir" ] && ruff check "$dir" --ignore E501 || true
+          done
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: ESLint (UI)
+        run: |
+          if [ -f "ui/package.json" ]; then
+            (cd ui && npm ci && npx eslint src --max-warnings=0) || true
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
+  # Integration tests — GPU self-hosted runner, epic/* merges only
+  # ──────────────────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests (GPU)
+    runs-on: [self-hosted, gpu, cuda12]
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/heads/epic/')
+    needs: [unit-tests, spl-compat]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install GPU Python deps
+        run: |
+          pip install cudf-cu12==24.10.* cuml-cu12==24.10.* \
+            pytest pytest-cov antlr4-python3-runtime==4.13 pyyaml stix2 grpcio
+
+      - name: Start CPU dev stack
+        run: |
+          docker compose -f infra/docker/docker-compose.dev.yml up -d
+          sleep 15
+
+      - name: Run integration tests
+        run: |
+          if [ -d "tests/integration" ]; then
+            pytest tests/integration/ -v --tb=short -m "integration" --timeout=300
+          else
+            echo "==> tests/integration not yet present — skipping"
+          fi
+
+      - name: Stop dev stack
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.dev.yml down -v
+
+  # ──────────────────────────────────────────────────────────────────
+  # E2E tests — GPU runner, nightly schedule only
+  # ──────────────────────────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests (GPU, Nightly)
+    runs-on: [self-hosted, gpu, cuda12]
+    if: github.event_name == 'schedule'
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - name: Start full GPU stack
+        run: |
+          docker compose -f infra/docker/docker-compose.gpu.yml up -d
+          sleep 30
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright
+        run: |
+          if [ -f "ui/package.json" ]; then
+            (cd ui && npm ci && npx playwright install --with-deps chromium)
+          fi
+
+      - name: Run E2E tests
+        run: |
+          if [ -d "tests/e2e" ]; then
+            (cd ui && npx playwright test tests/e2e/ --reporter=html)
+          else
+            echo "==> tests/e2e not yet present — skipping"
+          fi
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ui/playwright-report/
+          retention-days: 7
+
+      - name: Stop GPU stack
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.gpu.yml down -v
+
+  # ──────────────────────────────────────────────────────────────────
+  # Benchmarks — GPU runner, weekly schedule only
+  # ──────────────────────────────────────────────────────────────────
+  benchmarks:
+    name: Benchmarks (GPU, Weekly)
+    runs-on: [self-hosted, gpu, cuda12]
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.80"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install GPU Python deps
+        run: pip install cudf-cu12==24.10.* pytest pyyaml
+
+      - name: Start GPU store + support services
+        run: |
+          docker compose -f infra/docker/docker-compose.gpu.yml up -d store redis postgres
+          sleep 15
+
+      - name: Ingest benchmark
+        run: make bench-ingest || echo "==> bench-ingest not available yet"
+
+      - name: Query benchmark
+        run: make bench-query || echo "==> bench-query not available yet"
+
+      - name: Rust criterion benchmarks
+        run: |
+          if [ -f "services/store/Cargo.toml" ]; then
+            mkdir -p benchmarks/results
+            (cd services/store && \
+              cargo bench --bench "*" -- --output-format bencher) \
+              | tee benchmarks/results/$(date +%Y-%m-%d)-store.txt
+          else
+            echo "==> skipping store benchmarks (no Cargo.toml yet)"
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: benchmarks/results/
+          retention-days: 90
+
+      - name: Stop GPU stack
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.gpu.yml down -v

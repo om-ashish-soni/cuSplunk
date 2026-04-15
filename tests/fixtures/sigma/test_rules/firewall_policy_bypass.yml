@@ -1,0 +1,31 @@
+title: Firewall Policy Bypass Attempt
+id: a1b2c3d4-0009-4e5f-8a9b-000000000009
+status: test
+description: Detects traffic allowed by a policy that previously only generated denies from the same source, potentially indicating policy manipulation or a new egress path.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1562/004/
+tags:
+  - attack.defense_evasion
+  - attack.t1562.004
+logsource:
+  category: firewall
+detection:
+  selection_deny:
+    action: deny
+    policy: inbound-default
+  selection_allow:
+    action: allow
+    policy: inbound-default
+  condition: selection_allow
+fields:
+  - src_ip
+  - dst_ip
+  - dst_port
+  - action
+  - policy
+falsepositives:
+  - Policy updates
+  - Intentional rule exceptions
+level: low

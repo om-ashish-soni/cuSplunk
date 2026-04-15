@@ -3,7 +3,7 @@
 **Owner:** P4  
 **Service:** `services/detect/` (Python + NVIDIA Morpheus)  
 **Milestone:** M3  
-**Status:** Planning
+**Status:** R2 ✅ S5.1 (Sigma engine) + S5.5 (cyBERT normalize) — pipeline skeleton — uncommitted to branch
 
 ## Goal
 

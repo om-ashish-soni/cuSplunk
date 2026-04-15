@@ -1,0 +1,81 @@
+[package]
+name    = "cusplunk-store"
+version = "0.1.0"
+edition = "2021"
+description = "cuSplunk GPU-native columnar storage engine"
+
+[[bin]]
+name = "store"
+path = "src/main.rs"
+
+[lib]
+name = "cusplunk_store"
+path = "src/lib.rs"
+
+# ---------------------------------------------------------------------------
+# Dependencies (all versions pinned)
+# ---------------------------------------------------------------------------
+[dependencies]
+# Async runtime
+tokio        = { version = "1.38.0", features = ["full"] }
+
+# gRPC
+tonic        = { version = "0.11.0", features = ["transport", "tls"] }
+prost        = "0.12.6"
+
+# Apache Arrow (columnar in-memory + IPC)
+arrow        = { version = "53.0.0", features = ["ipc", "prettyprint"] }
+
+# Serialization
+serde        = { version = "1.0.203", features = ["derive"] }
+serde_json   = "1.0.120"
+
+# Hashing (bloom filter)
+xxhash-rust  = { version = "0.8.10", features = ["xxh3"] }
+
+# UUID for bucket IDs
+uuid         = { version = "1.9.1", features = ["v4"] }
+
+# Error handling
+thiserror    = "1.0.62"
+
+# Logging / tracing
+tracing             = "0.1.40"
+tracing-subscriber  = { version = "0.3.18", features = ["env-filter", "fmt"] }
+
+# Config parsing
+serde_yaml   = "0.9.34"
+
+# Bytes utilities
+bytes        = "1.6.0"
+
+# Async stream utilities (for gRPC server-streaming)
+tokio-stream = { version = "0.1.15", features = ["sync"] }
+
+# Object store (cold tier — dependency declared now, used in R2)
+object_store = { version = "0.10.1", features = ["aws", "gcp", "azure"], optional = true }
+
+# Raft consensus (replication — R3)
+openraft     = { version = "0.9.13", optional = true }
+
+# Async trait support
+async-trait  = "0.1.80"
+
+[features]
+default     = []
+cold-tier   = ["object_store"]
+replication = ["openraft"]
+
+# ---------------------------------------------------------------------------
+# Build dependencies
+# ---------------------------------------------------------------------------
+[build-dependencies]
+tonic-build           = "0.11.0"
+protoc-bin-vendored   = "3.0.0"
+
+# ---------------------------------------------------------------------------
+# Dev dependencies
+# ---------------------------------------------------------------------------
+[dev-dependencies]
+tempfile    = "3.10.1"
+tokio-test  = "0.4.4"

@@ -1,0 +1,27 @@
+title: Horizontal Port Scan
+id: a1b2c3d4-0007-4e5f-8a9b-000000000007
+status: test
+description: Detects a single source IP scanning many destination IPs on the same port — classic horizontal port scan pattern.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1046/
+tags:
+  - attack.discovery
+  - attack.t1046
+logsource:
+  category: firewall
+detection:
+  selection:
+    action:
+      - deny
+      - drop
+    protocol: tcp
+  condition: selection | count(dst_ip) by src_ip, dst_port > 50
+fields:
+  - src_ip
+  - dst_port
+falsepositives:
+  - Authorized penetration testing
+  - Vulnerability scanners (allowlisted)
+level: high

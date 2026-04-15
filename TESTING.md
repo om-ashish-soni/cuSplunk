@@ -27,6 +27,34 @@
 
 ---
 
+## Local Dev / No-GPU Testing
+
+Unit tests and the SPL compat suite must run on any developer laptop — no GPU required.
+Each layer has a defined CPU fallback strategy:
+
+| Layer | Strategy | How |
+|---|---|---|
+| cuDF query/detect logic | `cudf.pandas` CPU fallback | `CUDF_PANDAS_FALLBACK_MODE=1` or just use plain `pandas` (identical API) |
+| Numba CUDA kernels | Numba CUDA simulator | `NUMBA_ENABLE_CUDASIM=1` — runs kernels thread-by-thread on CPU |
+| CUDA C++ kernels (`libs/gpu-kernels/`) | CPU reference implementation | Separate `*_cpu.py` test fixtures; CUDA `.cu` files only compiled in GPU CI |
+| Morpheus / Triton (detect service) | Stub service | `docker-compose.dev.yml` replaces Morpheus/Triton with in-process stubs |
+| Go / Rust services | No GPU needed | Protocol and storage logic has no GPU dependency |
+
+**Rule:** `make test` (unit tests only) must pass with zero GPU. GPU is only required for `make test-int`, `make test-e2e`, and `make bench`.
+
+```bash
+# Run all unit tests locally (no GPU)
+NUMBA_ENABLE_CUDASIM=1 CUDF_PANDAS_FALLBACK_MODE=1 make test
+
+# Or set once in your shell profile
+export NUMBA_ENABLE_CUDASIM=1
+export CUDF_PANDAS_FALLBACK_MODE=1
+```
+
+The `docker-compose.dev.yml` (built in R1-C4) sets these env vars automatically for all Python containers.
+
+---
+
 ## Layer 1: Unit Tests
 
 ### Go services (ingest, bridge, api)
@@ -332,10 +360,13 @@ on: [push, pull_request]
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    env:
+      NUMBA_ENABLE_CUDASIM: "1"       # run CUDA kernels on CPU
+      CUDF_PANDAS_FALLBACK_MODE: "1"  # cuDF falls back to pandas (no GPU needed)
     steps:
       - go test ./...          # ingest, bridge, api
       - cargo test             # store
-      - pytest --cov           # query, detect
+      - pytest --cov           # query, detect  (pandas fallback, no GPU)
       - npm test               # ui
 
   spl-compat:

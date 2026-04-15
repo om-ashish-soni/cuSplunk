@@ -1,0 +1,32 @@
+title: Suspicious Special Privilege Logon
+id: a1b2c3d4-0004-4e5f-8a9b-000000000004
+status: test
+description: Detects a non-standard account obtaining special privileges (EventID 4672) outside business hours.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1134/
+tags:
+  - attack.privilege_escalation
+  - attack.t1134
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventCode: 4672
+  filter_system:
+    AccountName|endswith:
+      - "$"
+      - "SYSTEM"
+      - "NETWORK SERVICE"
+      - "LOCAL SERVICE"
+  condition: selection and not filter_system
+fields:
+  - AccountName
+  - AccountDomain
+  - ComputerName
+falsepositives:
+  - Scheduled maintenance tasks
+  - Legitimate admin activity
+level: medium

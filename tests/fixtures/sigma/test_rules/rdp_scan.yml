@@ -1,0 +1,26 @@
+title: RDP Port Scan
+id: a1b2c3d4-0003-4e5f-8a9b-000000000003
+status: test
+description: Detects a single source scanning multiple destination IPs on RDP port 3389.
+author: cuSplunk Test Suite
+date: 2024-01-01
+references:
+  - https://attack.mitre.org/techniques/T1046/
+tags:
+  - attack.discovery
+  - attack.t1046
+logsource:
+  category: firewall
+detection:
+  selection:
+    dst_port: 3389
+    protocol: tcp
+  condition: selection | count(dst_ip) by src_ip > 20
+fields:
+  - src_ip
+  - dst_ip
+  - dst_port
+falsepositives:
+  - Legitimate RDP deployment tools
+  - IT asset scanners (allowlisted)
+level: high
