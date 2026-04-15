@@ -113,18 +113,55 @@ cuSplunk/
 
 ## Tech Stack
 
-| Layer | Technology |
+> Full version-locked stack: [TECH_STACK.md](TECH_STACK.md)
+
+### Languages
+
+| Service | Language | Version |
+|---|---|---|
+| Ingest, Bridge, API | Go | 1.22+ |
+| Storage engine | Rust | 1.80+ |
+| Query executor, Detection | Python | 3.11+ |
+| SPL parser | Python + ANTLR4 | 4.13 |
+| GPU kernels | CUDA C++ | 12.4+ |
+| UI | TypeScript / Next.js | 5.4+ / 14+ |
+
+### GPU / CUDA Stack
+
+| Component | Version |
 |---|---|
-| Ingest servers | Go |
-| Storage engine | Rust + CUDA |
-| Query executor | Python + RAPIDS cuDF |
-| Detection engine | Python + NVIDIA Morpheus |
-| SPL parser | ANTLR4 |
-| GPU kernels | CUDA C++ |
-| UI | React + Next.js (TypeScript) |
-| API gateway | Go (gRPC + REST) |
-| Infra | Kubernetes + Helm |
-| GPU requirement | NVIDIA A10G / A100 / H100 (CUDA 12+) |
+| CUDA Toolkit | 12.4+ |
+| NVIDIA RAPIDS cuDF | 24.10+ |
+| NVIDIA RAPIDS cuStreamz | 24.10+ |
+| NVIDIA Morpheus | PB 25h1 (May 2025) |
+| NVIDIA Triton Inference Server | 25.01 |
+| RAPIDS Memory Manager (RMM) | 24.10+ |
+| nvCOMP (GPU compression) | 4.0+ |
+| cuFile / GPUDirect Storage | 1.9+ |
+
+### Key Libraries
+
+| Layer | Libraries |
+|---|---|
+| Go services | gin, grpc, confluent-kafka-go, zap, prometheus/client |
+| Rust store | tokio, tonic, arrow-rs, object_store, openraft, xxhash-rust |
+| Python services | cudf-cu12, morpheus, tritonclient, antlr4, redis, pyyaml, stix2 |
+| UI | React 18, Monaco Editor, ECharts, TailwindCSS, SWR, TanStack Table |
+
+### Infrastructure
+
+| Component | Technology |
+|---|---|
+| Orchestration | Kubernetes 1.30+ + Helm 3.15+ |
+| Metadata DB | PostgreSQL 16 |
+| Cache | Redis 7.2+ |
+| Metrics + Dashboards | Prometheus 2.52+ + Grafana 10.4+ |
+| Tracing | OpenTelemetry 1.3+ |
+| Secrets | HashiCorp Vault 1.17+ |
+| CI/CD | GitHub Actions (GPU self-hosted runner) |
+
+**Minimum GPU:** NVIDIA A10G (24 GB VRAM), CUDA Compute Capability 8.0+  
+**Ingest protocols:** S2S (Universal Forwarder) · HEC · Syslog UDP/TCP/TLS · Kafka
 
 ## Benchmarks
 
